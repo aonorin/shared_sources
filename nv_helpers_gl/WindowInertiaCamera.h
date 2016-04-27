@@ -90,7 +90,9 @@ public:
 		m_bMMousing = false;
 		m_bNewTiming = false;
 		m_bAdjustTimeScale = true;
+#ifdef USEOPENGLTEXT
 		m_textColor = 0xE0E0FFA0;
+#endif
         m_fov = fov_;
         m_near = near_;
         m_far = far_;
@@ -196,6 +198,13 @@ bool WindowInertiaCamera::init()
     m_traceDisp.setNameColorIdx(0);
     m_traceDisp.setValueColorIdx(-1);
 #endif
+
+    const int w = m_winSz[0];
+    const int h = m_winSz[1];
+    glViewport(0, 0, w, h);
+    float r = (float)w / (float)h;
+    m_projection = perspective(m_fov, r, m_near, m_far);
+
     return true;
 }
 
@@ -489,12 +498,10 @@ void WindowInertiaCamera::reshape(int w, int h)
     //
     // Let's validate again the base of resource management to make sure things keep consistent
     //
-    int W = getWidth();
-    int H = getHeight();
 
-    glViewport(0, 0, W, H);
+    glViewport(0, 0, w, h);
 
-    float r = (float)getWidth() / (float)getHeight();
+    float r = (float)w / (float)h;
     m_projection = perspective(m_fov, r, m_near, m_far);
 }
 #endif //WINDOWINERTIACAMERA_EXTERN

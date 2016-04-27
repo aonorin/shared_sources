@@ -23,48 +23,48 @@
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 -----------------------------------------------------------------------*/
 
-#include "NvFoundation.h"
+#ifndef NV_PROFILERGL_INCLUDED
+#define NV_PROFILERGL_INCLUDED
 
-#ifndef NVP_PLATFORM_H__
-#define NVP_PLATFORM_H__
-
-#define NVP_RESTRICT      NV_RESTRICT
-#define NVP_INLINE        NV_INLINE
-
-#define NVP_ALIGN_V       NV_ALIGN
-#define NVP_ALIGN_BEGIN   NV_ALIGN_PREFIX
-#define NVP_ALIGN_END     NV_ALIGN_SUFFIX
-
-#if defined(__GNUC__) && (__GNUC__ > 3 || (__GNUC__ >= 3 && __GNUC_MINOR__ >= 4))
-
-  #define NVP_NOOP(...)
-  #define NVP_BARRIER()       __sync_synchronize()
-
+#if USE_GLEXTWRAPPER
+#include <glextwrapper/glextwrapper.h>
 /*
-// maybe better than __sync_synchronize?
-#if defined(__i386__ ) || defined(__x64__)
-#define NVP_BARRIER()  __asm__ __volatile__ ("mfence" ::: "memory")
-#endif
-
-#if defined(__arm__)
-#define NVP_BARRIER() __asm__ __volatile__ ("dmb" :::"memory")
-#endif
+glGenQueries
+glDeleteQueries
+glQueryCounter
+glFlush
+glGetQueryObjectiv
 */
-  
-#elif defined(__MSC__) || defined(_MSC_VER)
-
-  #include <emmintrin.h>
-
-  #pragma warning(disable:4142) // redefinition of same type
-  #if (_MSC_VER >= 1400)      // VC8+
-    #pragma warning(disable : 4996)    // Either disable all deprecation warnings,
-  #endif   // VC8+
-
-  #define NVP_NOOP            __noop
-  #define NVP_BARRIER()       _mm_mfence()
-
 #else
-  #error "compiler unkown"
+#include <GL/glew.h>
 #endif
+
+#include <stdio.h>
+#include <vector>
+#include <string>
+
+#include "../nv_helpers/profiler.hpp"
+
+
+namespace nv_helpers_gl
+{
+
+  class ProfilerTimersGL : public nv_helpers::Profiler::GPUInterface {
+  public:
+    virtual const char* TimerTypeName ();
+    virtual bool        TimerAvailable ( nv_helpers::Profiler::TimerIdx idx );
+    virtual void        TimerSetup     ( nv_helpers::Profiler::TimerIdx idx );
+    virtual unsigned long long  TimerResult(  nv_helpers::Profiler::TimerIdx idxBegin,
+                                              nv_helpers::Profiler::TimerIdx idxEnd );
+    virtual void        TimerEnsureSize( unsigned int timers);
+    virtual void        TimerFlush();
+
+    void init(unsigned int timers);
+    void deinit();
+
+  private:
+    std::vector<GLuint> m_queries;
+  };
+}
 
 #endif

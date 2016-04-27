@@ -27,6 +27,7 @@
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -39,7 +40,7 @@
 
 //////////////////////////////////////////////////////////////////////////
 
-namespace nv_helpers_gl
+namespace nv_helpers
 {
 
   Profiler::Profiler()
@@ -48,6 +49,7 @@ namespace nv_helpers_gl
     , m_resetDelay(0)
     , m_frequency(1)
     , m_level(0)
+    , m_defaultGPUIF(0)
   {
 
   }
@@ -82,29 +84,17 @@ namespace nv_helpers_gl
 
         if (entry.splitter) continue;
 
-        GLint available = 0;
-        GLuint queryFrame = (m_numFrames + 1) % FRAME_DELAY;
+        int available = 1;
+        unsigned int queryFrame = (m_numFrames + 1) % FRAME_DELAY;
         if (entry.gpuif){
           available = !!entry.gpuif->TimerAvailable(getTimerIdx(Slot(i), queryFrame, false));
         }
-        else{
-          glGetQueryObjectiv(entry.queries[queryFrame + FRAME_DELAY], GL_QUERY_RESULT_AVAILABLE,&available);
-        }
-        
 
         if (available) {
-          GLuint64 gpuNano;
+          unsigned long long gpuNano = 0;
           if (entry.gpuif){
             gpuNano = entry.gpuif->TimerResult( getTimerIdx(Slot(i), queryFrame, true), getTimerIdx(Slot(i), queryFrame, false) );
           }
-          else{
-            GLuint64 beginTime;
-            GLuint64 endTime;
-            glGetQueryObjectui64v(entry.queries[queryFrame], GL_QUERY_RESULT,&beginTime);
-            glGetQueryObjectui64v(entry.queries[queryFrame + FRAME_DELAY], GL_QUERY_RESULT,&endTime);
-            gpuNano = endTime - beginTime;
-          }
-
           // nanoseconds to microseconds
           double gpu = double(gpuNano) / 1000.0;
           entry.gpuTimes += gpu;
@@ -126,7 +116,6 @@ namespace nv_helpers_gl
     m_entries.resize(newsize);
     for (size_t i = oldsize; i < newsize; i++){
       Entry &entry = m_entries[i];
-      glGenQueries(2 * FRAME_DELAY, &entry.queries[0]);
       entry.name = NULL;
       entry.gpuif = NULL;
     }
@@ -151,7 +140,6 @@ namespace nv_helpers_gl
   {
     for (size_t i = 0; i < m_entries.size(); i++){
       Entry &entry = m_entries[i];
-      glDeleteQueries(2 * FRAME_DELAY, &entry.queries[0]);
       entry.name = NULL;
     }
   }
@@ -175,6 +163,47 @@ namespace nv_helpers_gl
     va_end(list);
 
     return std::string(text);
+  }
+
+  bool Profiler::getAveragedValues(const char* name, double& cpuTimer, double& gpuTimer)
+  {
+    for (unsigned int i = 0; i < m_lastEntries; i++){
+      Entry &entry = m_entries[i];
+      entry.accumulated = false;
+    }
+
+    for (unsigned int i = 0; i < m_lastEntries; i++){
+      Entry &entry = m_entries[i];
+
+      if (!entry.numTimes || entry.accumulated || strcmp(name,entry.name) ) continue;
+
+      double gpu = entry.gpuTimes/entry.numTimes;
+      double cpu = entry.cpuTimes/entry.numTimes;
+      bool found = false;
+      for (unsigned int n = i+1; n < m_lastEntries; n++){
+        Entry &otherentry = m_entries[n];
+        if (otherentry.name == entry.name && 
+          otherentry.level == entry.level &&
+          otherentry.gpuif == entry.gpuif &&
+          !otherentry.accumulated
+          )
+        {
+          found = true;
+          gpu += otherentry.gpuTimes/otherentry.numTimes;
+          cpu += otherentry.cpuTimes/otherentry.numTimes;
+          otherentry.accumulated = true;
+        }
+
+        if (otherentry.splitter && otherentry.level <= entry.level) break;
+      }
+
+      cpuTimer = cpu;
+      gpuTimer = gpu;
+
+      return true;
+    }
+
+    return false;
   }
 
   void Profiler::print( std::string &stats)
@@ -217,7 +246,7 @@ namespace nv_helpers_gl
         if (otherentry.splitter && otherentry.level <= entry.level) break;
       }
 
-      const char* gpuname = entry.gpuif ? entry.gpuif->TimerTypeName() : "GL ";
+      const char* gpuname = entry.gpuif ? entry.gpuif->TimerTypeName() : "N/A";
 
       if (found){
         stats += format("%sTimer %s;\t %s %6d; CPU %6d; (microseconds, accumulated loop)\n",&spaces[level], entry.name, gpuname, (unsigned int)(gpu), (unsigned int)(cpu));
@@ -228,7 +257,13 @@ namespace nv_helpers_gl
     }
   }
 
-  double Profiler::getMicroSeconds()
+  unsigned int Profiler::getAveragedFrames() const
+  {
+    if (m_entries.empty()) return 0;
+    return m_entries[0].numTimes;
+  }
+
+  double Profiler::getMicroSeconds() const
   {
 #ifdef _WIN32
     LARGE_INTEGER time;

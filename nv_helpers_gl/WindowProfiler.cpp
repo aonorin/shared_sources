@@ -271,20 +271,11 @@ namespace nv_helpers_gl
       }
     }
 
-    ContextFlags flags;
-    flags.major = Major;
-    flags.minor = Minor;
-    flags.robust = 0;
-    flags.core  = 0;
-#ifdef NDEBUG
-    flags.debug = 0;
-#else
-    flags.debug = 1;
-#endif
-    flags.share = NULL;
+    m_cflags.major = Major;
+    m_cflags.minor = Minor;
 
-    if (!activate(width,height,title.c_str(), &flags)){
-      printf("Could not create GL context: %d.%d\n",flags.major,flags.minor);
+    if (!activate(width,height,title.c_str(), &m_cflags)){
+      printf("Could not create GL context: %d.%d\n",m_cflags.major,m_cflags.minor);
       return EXIT_FAILURE;
     }
 
@@ -294,6 +285,8 @@ namespace nv_helpers_gl
     m_window.m_viewsize[1] = height;
 
     m_profiler.init();
+    m_gltimers.init(m_profiler.getRequiredTimers());
+    m_profiler.setDefaultGPUInterface(&m_gltimers);
 
     bool Run = begin();
     m_active = true;
@@ -322,7 +315,7 @@ namespace nv_helpers_gl
         
         std::string stats;
         {
-          Profiler::FrameHelper helper(m_profiler,sysGetTime(), float(intervalSeconds), stats);
+          nv_helpers::Profiler::FrameHelper helper(m_profiler,sysGetTime(), float(intervalSeconds), stats);
           {
             NV_PROFILE_SECTION("Frame");
             think(sysGetTime() - timeStart);
@@ -383,6 +376,9 @@ namespace nv_helpers_gl
 
     end();
     m_active = false;
+
+    m_profiler.deinit();
+    m_gltimers.deinit();
 
     return Run ? EXIT_SUCCESS : EXIT_FAILURE;
   }
